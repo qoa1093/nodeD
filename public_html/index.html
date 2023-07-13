@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script type="text/javascript" src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=n42puome01&amp;submodules=geocoder"></script>
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js" integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g=" crossorigin="anonymous"></script>
+
+
+</script>
+</head>
+<body>
+     <div style="margin-top: 20px; margin-bottom:  10px; font-weight: bold;">환영합니다.관광기후에 대해 알려드리겠습니다.</div>
+    <div id = "map" style="width: 50em; height: 30em;"></div>
+</body>
+<script>
+    let pointx;
+    let pointy;
+    $(document).ready(async function(){
+        let xy = await getLocation();
+        //alert("위도"+xy.lat);
+        
+        await naver.maps.Service.reverseGeocode({
+            location: new naver.maps.LatLng(xy.lat, xy.lng)
+        },function(status, response){
+            let result = response.result;
+            let items = result.items;
+            //console.log( items[0].addrdetail.sido); //시도
+           //console.log(items[0].addrdetail.sigugun);//시구군
+           let sido_arr = items[0].addrdetail.sido.split(" ");
+           let gubun_arr = items[0].addrdetail.sigugun.split(" ");
+
+           let sido = "";
+           let gubun = "";
+           if(sido_arr.length == 1){
+            sido = sido_arr[0];
+            gugun = gubun_arr[0];
+            if(gubun_arr.length >1){
+                gugun += gubun_arr[1];
+            }
+           }
+           else if(sido_arr.length > 1){
+            sido = sido_arr[0];
+            gugun = sido_arr[1];
+            
+           }
+           console.log(sido + " " + gugun);
+//https://apis.data.go.kr/1360000/TourStnInfoService1/getCityTourClmIdx1?serviceKey=ibNDydv%2BVD1XxdnbSBCwRIZ4nfiYnptFv6FveU0wGfu4yRPisWSg%2F1gRJgdgRxOvOm6DlzNjTEJrjZkDyxNwbw%3D%3D&pageNo=1&numOfRows=10&dataType=XML&CURRENT_DATE=2018123110&DAY=3&CITY_AREA_ID=5013000000
+           $.ajax({
+            url:"/weather_list",
+            type:"GET",
+            cache: false,
+            dataType : "json",
+            data : {"pageNo":"1",
+                    "numOfRows":"1000",
+                    "dataType":"json",
+                    "CURRENT_DATE": 20230710,
+                    "DAY": 3
+                    },
+            success: function(data){
+                //data는 위의 데이터와 다른 것
+                console.log(data);
+                //지도를 삽입할 html요소 또는 html요소의 id를 지정합니다.
+                var mapDiv = document.getElementById('map');
+                //옵션 없이 지도 객체를 생성하면 서울 시청을 중심으로하는 16레벨의 지도가 생성됩니다.
+                var mapOptions = {
+                    center : new naver.maps.LatLng(xy.lat, xy.lng),
+                    zoom : 10
+                    
+                }
+                var map = new naver.maps.Map(mapDiv, mapOptions);
+                //item이 복수기 때문에 foreach문을 function을 써서 사용하기
+                data.items.item.forEach(async function(it, index){
+                    let totalCityName = it.totalCityName; //관광지역
+                    let kmaTci = it.kmaTci;//관광점수
+                    let TCI_GRADE = it.TCI_GRADE;//관광기후등급
+                    let {item, point} = await searchAddressToCoordinate(it.totalCityName);
+                //console.log(pointx + " " + pointy);
+                
+                
+                    //console.log("넘어온 좌표"+tmp);
+                
+                //let cityhall = new naver.maps.LatLng(tmp);
+                let marker = new naver.maps.Marker({
+                    map: map,
+                    position: point//cityhall
+                });
+
+                var contentString = [
+                        '<div class="iw_inner">',
+                        '   <h3> 관광지 이름 : '+totalCityName+'</h3>',
+                        '   <p> 관광지 점수 : '+kmaTci +'<br />'
+                        +'관광지 점수 : ' +TCI_GRADE+'   </p>',
+                        '</div>'
+                    ].join('');
+
+                var infowindow = new naver.maps.InfoWindow({
+                    content: contentString,
+                    maxWidth: 160,
+                    backgroundColor: "#eee",
+                    borderColor: "white",
+                    borderWidth: 5,
+                    anchorSize: new naver.maps.Size(30, 30),
+                    anchorSkew: true,
+                    anchorColor: "#eee",
+                    pixelOffset: new naver.maps.Point(20, -20)
+                });
+
+                naver.maps.Event.addListener(marker, "click", function(e) {
+                    if (infowindow.getMap()) {
+                        infowindow.close();
+                    } else {
+                        infowindow.open(map, marker);
+                    }
+                });
+            });
+                },
+               
+            error:function(request, status, error){
+
+            }
+        });
+    });
+    });
+    async function getLocation(){
+        let xy = new Object();
+        if(navigator.geolocation){
+
+            let promise = new Promise((resolve, rejected)=>{
+                navigator.geolocation.getCurrentPosition((position)=>{
+                    resolve(position);
+                });
+            });
+            let position = await promise;
+            //navigator.geolocation.getCurrentPosition(function(position){
+                //position.coords.latitude 위도
+                //position.coords.longitude 경도
+
+            xy.lat = position.coords.latitude;
+            xy.lng = position.coords.longitude;
+            //alert("위도"+xy.lat);
+            //alert("경도"+xy.lng);
+            }/*)*/;
+        //}
+        return xy;
+    }
+    
+    //지역 이름으로 위치를 찾기
+    async function searchAddressToCoordinate(address) {
+        return new Promise(function(res,rej){
+
+            //console.log("gkdl"+address);
+            naver.maps.Service.geocode({
+                query: address
+            }, function(status, response) {
+                if (status === naver.maps.Service.Status.ERROR) {
+                    rej('Something Wrong!');
+                }
+                
+                /*if (response.v2.meta.totalCount === 0) {
+                    return alert('totalCount' + response.v2.meta.totalCount);
+                }*/
+                
+                
+                var item = response.v2.addresses[0];
+                var point = new naver.maps.Point(item.x, item.y);
+                res({item, point});
+                //console.log(point);
+                //console.log("좌표:"+tmp);
+                //callback(point);
+                //if(point) {return (item.x, item.y)};
+                // pointx = item.x;
+                // pointy = item.y;
+                // console.log(pointx + " " + pointy);
+            });
+        });
+    }
+  
+</script>
+</html>
